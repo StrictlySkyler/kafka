@@ -14,26 +14,9 @@ const produce = require('elytron').produce;
 
 log(`Dependencies installed: ${dependencies}`);
 
-const MongoInternals = require('meteor/mongo').MongoInternals;
-const mongo_url = process.env.MONGO_URL || 'mongodb://localhost:3001';
-const db = MongoInternals.defaultRemoteCollectionDriver(mongo_url).mongo.db;
-let collection_names = [];
-let collections = db.listCollections();
-
-collections.forEach((collection) => {
-  collection_names.push(collection.name);
-});
-
 const render_input = (values = {}) => {
-
   const html = `
     <p>This harbor submits manifests to a Kafka broker.</p>
-    <p>If configured as a Followup Lane to another lane, it will produce its 
-    manifest (and prior manifest) to the Topic configured here when called.</p>
-    <p>If database collections are selected here, it will observe any changes 
-    to those collections, and produce them to the Topic configured here.</p>
-    <p>If the same Lane is configured to do both, it will produce events from
-    both scenarios to the same topic.</p>
 
     <label><h5>Kafka Broker Connection String:</h5>
       <input
@@ -53,30 +36,25 @@ const render_input = (values = {}) => {
         value="${values['kafka-topic'] || ''}"
       >
     </label>
-    <h5>Collections found:</h5>
-    <ul>
-      ${
-        collection_names.map(name => `
-          <li>
-            <label>
-              <input
-                name="collection:${name.replace('.', '_dot_')}"
-                type=checkbox
-                value="${name.replace('.', '_dot_')}"
-                ${values && values[`collection:${name}`] ? 'checked' : ''}
-              >
-              ${name}
-            </label>
-          </li>
-        `).join('')
-      }
-    </ul>
   `;
 
   return html;
 };
 
-const render_work_preview = () => `Nothing yet!`;
+const render_work_preview = (manifest) => {
+  return `
+    <figure>
+      <figcaption>
+        A message will be produced to <code>${
+          manifest['kafka-broker-connection-string']
+        }</code> 
+        on topic <code>${
+          manifest['kafka-topic']
+        }</code>.
+      </figcaption>
+    </figure>
+  `;
+};
 
 const register = () => harbor_name;
 
@@ -86,8 +64,15 @@ const update = (lane, values) => {
     return false;
   }
 
-  set_hooks(values);
+  set_broker_connection_string(values['kafka-broker-connection-string']);
+
   return true;
+};
+
+const set_broker_connection_string = (brokers) => {
+  process.env.KAFKA_BROKERS = brokers;
+
+  return process.env.KAFKA_BROKERS;
 };
 
 const check_topic = (topic_name) => {
@@ -97,30 +82,16 @@ const check_topic = (topic_name) => {
   return results.length == topic_name.length;
 };
 
-const set_hooks = (values) => {
-  const keys = Object.keys(values);
-  const collection_key = /^collection:/;
-  const topic = values['kafka-topic'];
+const work = (lane, manifest) => {
+  const topic = manifest['kafka-topic'];
+  let exit_code = 1;
 
-  _.each(hooks, hook => hook.stop());
+  produce(topic, manifest, null, $H.bindEnvironment((code) => {
+    exit_code = code;
 
-  keys.forEach((key) => {
-    if (!key.match(collection_key)) return;
-    const collection_name = values[key].replace('_dot_', '.');
-    const collection = Meteor.Collection.get(collection_name);
-    hooks[collection] = collection.find().observe({
-      added (doc) { return produce(topic, { type: 'added', doc }); },
-      removed (old) { return produce(topic, { type: 'removed', old }); },
-      changed (old, doc) {
-        return produce(topic, { type: 'changed', old, doc });
-      },
-    });
-  });
+    $H.end_shipment(lane, exit_code, manifest);
+  }));
 };
-
-const hooks = {};
-
-const work = () => {};
 
 module.exports = {
   render_input,
