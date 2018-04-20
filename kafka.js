@@ -64,15 +64,7 @@ const update = (lane, values) => {
     return false;
   }
 
-  set_broker_connection_string(values['kafka-broker-connection-string']);
-
   return true;
-};
-
-const set_broker_connection_string = (brokers) => {
-  process.env.KAFKA_BROKERS = brokers;
-
-  return process.env.KAFKA_BROKERS;
 };
 
 const check_topic = (topic_name) => {
@@ -84,13 +76,14 @@ const check_topic = (topic_name) => {
 
 const work = (lane, manifest) => {
   const topic = manifest['kafka-topic'];
+  const brokers = manifest['kafka-broker-connection-string'];
   let exit_code = 1;
 
   produce(topic, manifest, null, $H.bindEnvironment((code) => {
     exit_code = code;
 
     $H.end_shipment(lane, exit_code, manifest);
-  }));
+  }), brokers);
 };
 
 module.exports = {
