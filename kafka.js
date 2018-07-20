@@ -1,18 +1,19 @@
 
-const harbor_name = 'kafka';
-const dependencies = [
+const name = 'kafka';
+const pkgs = [
   'debug',
   'elytron',
   'underscore',
-].join(' ');
+];
 
-require('child_process').execSync(`npm i ${dependencies}`);
+let error;
+let produce;
 
-const log = require('debug')(`${harbor_name}:log`);
-const error = require('debug')(`${harbor_name}:error`);
-const produce = require('elytron').produce;
-
-log(`Dependencies installed: ${dependencies}`);
+const next = () => {
+  log = require('debug')(`${name}:log`);
+  error = require('debug')(`${name}:error`);
+  produce = require('elytron').produce;
+};
 
 const render_input = (values = {}) => {
   const html = `
@@ -56,7 +57,7 @@ const render_work_preview = (manifest) => {
   `;
 };
 
-const register = () => harbor_name;
+const register = () => ({ name, pkgs });
 
 const update = (lane, values) => {
   if (! check_topic(values['kafka-topic'])) {
@@ -92,4 +93,5 @@ module.exports = {
   register,
   update,
   work,
+  next,
 };
